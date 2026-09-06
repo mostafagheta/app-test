@@ -7,5 +7,7 @@
 	<suppress files="node[\\/].*" checks=".*"/>
 	<suppress files="build[\\/].*" checks=".*"/>
 	<suppress files="target[\\/].*" checks=".*"/>
+	<suppress files="Terraform-Infrastructure[\\/].*" checks=".*"/>
+	<suppress files="\.terraform[\\/].*" checks=".*"/>
 	<suppress files=".+\.(jar|git|ico|p12|gif|jks|jpg|svg|log|json)" checks="NoHttp"/>
 </suppressions>
