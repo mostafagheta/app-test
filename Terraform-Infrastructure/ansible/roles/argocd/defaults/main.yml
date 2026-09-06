@@ -1,0 +1,4 @@
+---
+# defaults file for argocd
+argocd_namespace: argocd
+argocd_chart_version: "8.x.x"

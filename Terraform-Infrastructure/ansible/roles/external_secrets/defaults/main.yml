@@ -1,0 +1,5 @@
+---
+# defaults file for external_secrets
+external_secrets_namespace: external-secrets
+external_secrets_chart_version: "0.10.3"
+external_secrets_role_arn: ""   # Pod Identity role ARN from Terraform output

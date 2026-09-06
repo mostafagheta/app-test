@@ -1,0 +1,103 @@
+# ApplicationSet: petclinic-dev-test
+# DEV and TEST
+# Same ECR repository, different immutable promotion tags.
+
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+
+metadata:
+  name: petclinic-dev-test
+  namespace: argocd
+
+spec:
+  goTemplate: true
+  goTemplateOptions:
+    - missingkey=error
+
+  generators:
+    - list:
+        elements:
+          # =========================
+          # DEV
+          # =========================
+          - env: dev
+            namespace: petclinic-dev
+            valuesFile: values-dev.yaml
+            imagePattern: "dev-[0-9a-f]+"
+            ecrSecret: ecr-dev-secret
+
+          # =========================
+          # TEST
+          # =========================
+          - env: test
+            namespace: petclinic-test
+            valuesFile: values-test.yaml
+            imagePattern: "test-[0-9a-f]+"
+            ecrSecret: ecr-test-secret
+
+  template:
+    metadata:
+      name: "petclinic-{{.env}}"
+
+      annotations:
+        # ==========================================
+        # Argo CD Image Updater
+        # ==========================================
+
+        # SAME ECR repository for all environments
+        argocd-image-updater.argoproj.io/image-list: >
+          petclinic=130299714330.dkr.ecr.eu-central-1.amazonaws.com/petclinic
+
+        # Tell Image Updater exactly where the image
+        # repository and tag are located in Helm values
+        argocd-image-updater.argoproj.io/petclinic.helm.image-name: image.repository
+        argocd-image-updater.argoproj.io/petclinic.helm.image-tag: image.tag
+
+        # DEV:
+        #   dev-abc123
+        #
+        # TEST:
+        #   test-abc123
+        #
+        # Only tags matching this environment are allowed.
+        argocd-image-updater.argoproj.io/petclinic.allow-tags: "regexp:^{{.imagePattern}}$"
+
+        # Pick the newest matching image
+        argocd-image-updater.argoproj.io/petclinic.update-strategy: latest
+
+        # ECR authentication
+        argocd-image-updater.argoproj.io/petclinic.pull-secret: "pullsecret:argocd/{{.ecrSecret}}"
+
+        # Image Updater writes the change directly
+        # to the Argo CD Application
+        argocd-image-updater.argoproj.io/write-back-method: argocd
+
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/mostafagheta/final_project.git
+
+        # Helm chart remains on dev branch
+        targetRevision: dev
+
+        path: helmchart
+
+        helm:
+          valueFiles:
+            - "{{.valuesFile}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+
+        namespace: "{{.namespace}}"
+
+      # Automatic deployment after Image Updater
+      # changes the Application image tag.
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+
+        syncOptions:
+          - CreateNamespace=true

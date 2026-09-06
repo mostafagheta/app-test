@@ -1,0 +1,6 @@
+server:
+  service:
+    type: ClusterIP   # expose via Ingress/ALB later, not a public LB directly
+configs:
+  params:
+    server.insecure: true   # simplifies initial setup; put TLS in front via ALB later

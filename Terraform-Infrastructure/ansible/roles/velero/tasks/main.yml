@@ -1,0 +1,136 @@
+---
+- name: Validate Velero configuration
+  ansible.builtin.assert:
+    that:
+      - velero_s3_bucket | length > 0
+      - velero_irsa_role_arn | length > 0
+      - velero_aws_region | length > 0
+      - velero_chart_version | length > 0
+      - velero_aws_plugin_version | length > 0
+      - velero_retention_period | length > 0
+      - velero_environment | length > 0
+    fail_msg: Set velero_s3_bucket and velero_irsa_role_arn before running this role.
+
+- name: Create Velero namespace
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    api_version: v1
+    kind: Namespace
+    name: "{{ velero_namespace }}"
+    state: present
+
+- name: Add Velero Helm repository
+  kubernetes.core.helm_repository:
+    name: vmware-tanzu
+    repo_url: https://vmware-tanzu.github.io/helm-charts
+    binary_path: "{{ helm_binary_path }}"
+
+- name: Install or upgrade Velero
+  kubernetes.core.helm:
+    name: "{{ velero_release_name }}"
+    chart_ref: vmware-tanzu/velero
+    chart_version: "{{ velero_chart_version }}"
+    release_namespace: "{{ velero_namespace }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+    binary_path: "{{ helm_binary_path }}"
+    create_namespace: false
+    wait: true
+    values:
+      cleanUpCRDs: false
+      upgradeCRDs: false
+      credentials:
+        useSecret: false
+      serviceAccount:
+        server:
+          create: true
+          name: "{{ velero_service_account_name }}"
+      configuration:
+        backupStorageLocation:
+          - name: default
+            provider: aws
+            bucket: "{{ velero_s3_bucket }}"
+            default: true
+            config:
+              region: "{{ velero_aws_region }}"
+        volumeSnapshotLocation:
+          - name: default
+            provider: aws
+            config:
+              region: "{{ velero_aws_region }}"
+      initContainers:
+        - name: velero-plugin-for-aws
+          image: "velero/velero-plugin-for-aws:{{ velero_aws_plugin_version }}"
+          imagePullPolicy: IfNotPresent
+          volumeMounts:
+            - mountPath: /target
+              name: plugins
+
+- name: Check Velero Pod Identity association
+  ansible.builtin.command:
+    argv:
+      - aws
+      - eks
+      - list-pod-identity-associations
+      - --cluster-name
+      - "{{ eks_cluster_name }}"
+      - --namespace
+      - "{{ velero_namespace }}"
+      - --service-account
+      - "{{ velero_service_account_name }}"
+      - --region
+      - "{{ velero_aws_region }}"
+      - --query
+      - "associations[0].associationId"
+      - --output
+      - text
+  register: velero_pod_identity_association
+  changed_when: false
+
+- name: Create Velero Pod Identity association
+  ansible.builtin.command:
+    argv:
+      - aws
+      - eks
+      - create-pod-identity-association
+      - --cluster-name
+      - "{{ eks_cluster_name }}"
+      - --namespace
+      - "{{ velero_namespace }}"
+      - --service-account
+      - "{{ velero_service_account_name }}"
+      - --role-arn
+      - "{{ velero_irsa_role_arn }}"
+      - --region
+      - "{{ velero_aws_region }}"
+  when: velero_pod_identity_association.stdout | trim in ['', 'None']
+  register: velero_pod_identity_create
+  changed_when: true
+
+- name: Read Velero server deployment
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    api_version: apps/v1
+    kind: Deployment
+    namespace: "{{ velero_namespace }}"
+    name: "{{ velero_release_name }}"
+  register: velero_deployment
+  retries: 12
+  delay: 5
+  until:
+    - velero_deployment.resources | length == 1
+    - (velero_deployment.resources[0].status.availableReplicas | default(0) | int) >= 1
+
+- name: Read Velero backup storage location
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    api_version: velero.io/v1
+    kind: BackupStorageLocation
+    namespace: "{{ velero_namespace }}"
+    name: default
+  register: velero_storage_location
+
+- name: Verify Velero installation and configuration
+  ansible.builtin.assert:
+    that:
+      - velero_storage_location.resources | length == 1
+    fail_msg: Velero backup storage location was not installed as expected.

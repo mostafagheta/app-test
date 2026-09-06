@@ -1,0 +1,17 @@
+---
+# tasks file for metrics_server
+- name: Add metrics-server Helm repo
+  kubernetes.core.helm_repository:
+    name: metrics-server
+    repo_url: https://kubernetes-sigs.github.io/metrics-server/
+    binary_path: "{{ helm_binary_path }}"
+
+- name: Install/upgrade metrics-server
+  kubernetes.core.helm:
+    name: metrics-server
+    chart_ref: metrics-server/metrics-server
+    chart_version: "{{ metrics_server_chart_version }}"
+    release_namespace: "{{ metrics_server_namespace }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+    binary_path: "{{ helm_binary_path }}"
+    wait: true # wait until the pods are up and reporting healthy/ready then mark done

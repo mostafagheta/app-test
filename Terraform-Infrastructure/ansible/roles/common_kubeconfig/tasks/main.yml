@@ -1,0 +1,81 @@
+---
+# tasks file for common_kubeconfig
+- name: Ensure python3-pip is installed
+  ansible.builtin.package:
+    name:
+      - python3-pip
+    state: present
+  become: true
+  become_user: root
+
+- name: Install the Kubernetes Python client
+  ansible.builtin.pip:
+    name: "{{ kubernetes_python_package }}"
+    executable: pip3
+  become: true
+  become_user: root
+
+- name: Check whether kubectl is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/kubectl
+  register: kubectl_binary
+  changed_when: false
+
+- name: Install kubectl when it is missing
+  ansible.builtin.get_url:
+    url: "https://dl.k8s.io/release/v{{ kubectl_version }}/bin/linux/{{ kubernetes_arch }}/kubectl"
+    dest: /usr/local/bin/kubectl
+    mode: '0755'
+  become: true
+  become_user: root
+  when: not kubectl_binary.stat.exists
+
+- name: Check whether Helm is installed
+  ansible.builtin.stat:
+    path: /usr/local/bin/helm
+  register: helm_binary
+
+- name: Download Helm archive
+  ansible.builtin.get_url:
+    url: "https://get.helm.sh/helm-v{{ helm_version }}-linux-{{ kubernetes_arch }}.tar.gz"
+    dest: "/tmp/helm-v{{ helm_version }}-linux-{{ kubernetes_arch }}.tar.gz"
+    mode: '0644'
+  when: not helm_binary.stat.exists
+
+- name: Install Helm
+  ansible.builtin.unarchive:
+    src: "/tmp/helm-v{{ helm_version }}-linux-{{ kubernetes_arch }}.tar.gz"
+    dest: /tmp
+    remote_src: true
+  when: not helm_binary.stat.exists
+
+- name: Install Helm binary
+  ansible.builtin.copy:
+    src: "/tmp/linux-{{ kubernetes_arch }}/helm"
+    dest: /usr/local/bin/helm
+    remote_src: true
+    mode: '0755'
+  become: true
+  become_user: root
+  when: not helm_binary.stat.exists
+
+- name: Ensure .kube directory exists
+  ansible.builtin.file:
+    path: /home/eks-manager/.kube
+    state: directory
+    mode: '0750'
+
+- name: Generate kubeconfig for EKS cluster
+  ansible.builtin.command:
+    cmd: >
+      aws eks update-kubeconfig
+      --name {{ eks_cluster_name }}
+      --region {{ aws_region }}
+      --kubeconfig {{ kubeconfig_path }}
+  changed_when: false
+
+- name: Verify cluster connectivity
+  kubernetes.core.k8s_info:
+    kubeconfig: "{{ kubeconfig_path }}"
+    kind: Namespace
+  register: ns_check

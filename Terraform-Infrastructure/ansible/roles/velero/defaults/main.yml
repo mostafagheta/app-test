@@ -1,0 +1,11 @@
+---
+velero_namespace: velero
+velero_release_name: velero
+velero_chart_version: "8.0.0"
+velero_aws_plugin_version: "v1.10.0"
+velero_aws_region: "{{ aws_region | default('eu-west-1') }}"
+velero_s3_bucket: ""
+velero_retention_period: "720h"     # default manual backup retention: 30 days
+velero_environment: "production"
+velero_irsa_role_arn: ""       # Pod Identity role ARN from Terraform output
+velero_service_account_name: velero

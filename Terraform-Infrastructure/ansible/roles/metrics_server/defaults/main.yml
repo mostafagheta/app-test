@@ -1,0 +1,4 @@
+---
+# defaults file for metrics_server
+metrics_server_namespace: kube-system
+metrics_server_chart_version: "3.13.1"

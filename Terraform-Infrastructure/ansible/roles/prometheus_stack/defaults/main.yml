@@ -1,0 +1,4 @@
+---
+# defaults file for prometheus_stack
+prometheus_namespace: monitoring
+prometheus_chart_version: "88.5.4"

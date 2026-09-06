@@ -1,0 +1,110 @@
+---
+# tasks file for argocd
+- name: Create argocd namespace
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    name: "{{ argocd_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Add argo Helm repo
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+    binary_path: "{{ helm_binary_path }}"
+
+- name: Copy Argo CD Helm values to bastion
+  ansible.builtin.copy:
+    src: values.yaml
+    dest: /tmp/argocd-values.yaml
+    mode: '0644'
+
+- name: Install/upgrade ArgoCD
+  kubernetes.core.helm:
+    name: argocd
+    chart_ref: argo/argo-cd
+    chart_version: "{{ argocd_chart_version }}"
+    release_namespace: "{{ argocd_namespace }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+    binary_path: "{{ helm_binary_path }}"
+    values_files:
+      - /tmp/argocd-values.yaml
+    wait: true
+
+# ---------- 1. Ensure Helm repo is present and fresh ----------
+- name: Add argo Helm repo
+  kubernetes.core.helm_repository:
+    name: argo
+    repo_url: https://argoproj.github.io/argo-helm
+    binary_path: "{{ helm_binary_path }}"
+
+- name: Update Helm repo cache
+  command: "{{ helm_binary_path }} repo update argo"
+  changed_when: false
+
+# ---------- 2. Pod Identity association (ServiceAccount -> IAM role) ----------
+- name: Check for an existing Pod Identity association
+  command: >
+    aws eks list-pod-identity-associations
+    --cluster-name {{ eks_cluster_name }}
+    --namespace {{ argocd_namespace }}
+    --service-account {{ image_updater_sa_name }}
+    --region {{ aws_region }}
+    --output json
+  register: existing_association
+  changed_when: false
+  failed_when: existing_association.rc != 0
+
+- name: Create the Pod Identity association (ServiceAccount -> IAM role)
+  command: >
+    aws eks create-pod-identity-association
+    --cluster-name {{ eks_cluster_name }}
+    --namespace {{ argocd_namespace }}
+    --service-account {{ image_updater_sa_name }}
+    --role-arn {{ image_updater_role_arn }}
+    --region {{ aws_region }}
+  when: (existing_association.stdout | from_json).associations | length == 0
+
+# ---------- 3. Install/upgrade argocd-image-updater ----------
+- name: Install/upgrade argocd-image-updater
+  kubernetes.core.helm:
+    name: argocd-image-updater
+    chart_ref: argo/argocd-image-updater
+    release_namespace: "{{ argocd_namespace }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+    binary_path: "{{ helm_binary_path }}"
+    create_namespace: false
+    values:
+      serviceAccount:
+        create: true
+        name: "{{ image_updater_sa_name }}"
+      config:
+        registries:
+          - name: ecr-{{ aws_region }}
+            api_url: "https://{{ ecr_registry_host }}"
+            prefix: "{{ ecr_registry_host }}"
+            credentials: ext:/scripts/ecr-login.sh
+            credsexpire: 10h
+        authScripts:
+          enabled: true
+          scripts:
+            ecr-login.sh: |
+              #!/bin/sh
+              aws ecr get-authorization-token --region {{ aws_region }} \
+                --output text --query 'authorizationData[].authorizationToken' | base64 -d
+        logLevel: info
+    wait: true
+    wait_timeout: 180s
+
+- name: Confirm the pod received Pod Identity credentials
+  command: >
+    kubectl -n {{ argocd_namespace }} exec
+    deploy/argocd-image-updater-controller --
+    sh -c "env | grep -E 'AWS_CONTAINER_CREDENTIALS_FULL_URI|AWS_ROLE_ARN'"
+  register: identity_check
+  changed_when: false
+  failed_when: identity_check.rc != 0
+- name: Show identity check result
+  debug:
+    var: identity_check.stdout

@@ -1,0 +1,26 @@
+---
+- name: Prepare VPA source directory
+  ansible.builtin.file:
+    path: "{{ vpa_source_dir }}"
+    state: directory
+    owner: eks-manager
+    group: eks-manager
+    mode: '0755'
+  become: true
+  become_user: root
+
+- name: Clone Kubernetes Autoscaler repository
+  ansible.builtin.git:
+    repo: "{{ vpa_repo_url }}"
+    dest: "{{ vpa_source_dir }}"
+    version: "{{ vpa_repo_version }}"
+    update: true
+
+- name: Install Vertical Pod Autoscaler
+  ansible.builtin.command:
+    cmd: ./hack/vpa-up.sh
+    chdir: "{{ vpa_source_dir }}/vertical-pod-autoscaler"
+  environment:
+    PATH: "/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+  register: vpa_install
+  changed_when: true

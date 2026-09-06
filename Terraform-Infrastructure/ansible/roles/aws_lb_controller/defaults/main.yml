@@ -1,0 +1,5 @@
+---
+# defaults file for aws_lb_controller
+lb_controller_namespace: kube-system
+lb_controller_chart_version: "1.8.1"
+lb_controller_role_arn: ""   # Pod Identity role ARN from Terraform output

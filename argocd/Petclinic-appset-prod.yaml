@@ -1,0 +1,82 @@
+apiVersion: argoproj.io/v1alpha1
+kind: ApplicationSet
+
+metadata:
+  name: petclinic-prod
+  namespace: argocd
+
+spec:
+  goTemplate: true
+  goTemplateOptions:
+    - missingkey=error
+
+  generators:
+    - list:
+        elements:
+          - env: prod
+            namespace: petclinic-prod
+            valuesFile: values-prod.yaml
+            imagePattern: "prod-[0-9a-f]+"
+            ecrSecret: ecr-prod-secret
+
+  template:
+    metadata:
+      name: "petclinic-{{.env}}"
+
+      annotations:
+        # ==========================================
+        # Argo CD Image Updater
+        # ==========================================
+
+        # SAME ECR repository used by DEV / TEST / PROD
+        argocd-image-updater.argoproj.io/image-list: >
+          petclinic=130299714330.dkr.ecr.eu-central-1.amazonaws.com/petclinic
+
+        # Helm image configuration
+        argocd-image-updater.argoproj.io/petclinic.helm.image-name: image.repository
+        argocd-image-updater.argoproj.io/petclinic.helm.image-tag: image.tag
+
+        # PROD only accepts prod-* tags
+        argocd-image-updater.argoproj.io/petclinic.allow-tags: "regexp:^{{.imagePattern}}$"
+
+        # Detect newest matching tag
+        argocd-image-updater.argoproj.io/petclinic.update-strategy: latest
+
+        # ECR authentication
+        argocd-image-updater.argoproj.io/petclinic.pull-secret: "pullsecret:argocd/{{.ecrSecret}}"
+
+        # Write image update directly to the Argo CD Application
+        argocd-image-updater.argoproj.io/write-back-method: argocd
+
+    spec:
+      project: default
+
+      source:
+        repoURL: https://github.com/mostafagheta/final_project.git
+
+        # Helm chart remains on dev branch
+        targetRevision: dev
+
+        path: helmchart
+
+        helm:
+          valueFiles:
+            - "{{.valuesFile}}"
+
+      destination:
+        server: https://kubernetes.default.svc
+
+        namespace: "{{.namespace}}"
+
+      # ==========================================
+      # IMPORTANT:
+      # PROD IS AUTOMATIC AFTER JENKINS APPROVAL
+      # ==========================================
+
+      syncPolicy:
+        automated:
+          prune: true
+          selfHeal: true
+
+        syncOptions:
+          - CreateNamespace=true

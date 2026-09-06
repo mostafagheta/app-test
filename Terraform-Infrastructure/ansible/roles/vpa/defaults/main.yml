@@ -1,0 +1,11 @@
+---
+vpa_repo_url: "https://github.com/kubernetes/autoscaler.git"
+vpa_repo_version: "master"
+
+vpa_source_dir: "/opt/kubernetes-autoscaler"
+
+petclinic_namespace: "petclinic"
+petclinic_deployment_name: "petclinic"
+
+vpa_name: "petclinic-vpa"
+vpa_update_mode: "Recreate"

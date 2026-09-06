@@ -1,0 +1,77 @@
+---
+# tasks file for external_secrets
+- name: Create external-secrets namespace
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    name: "{{ external_secrets_namespace }}"
+    api_version: v1
+    kind: Namespace
+    state: present
+
+- name: Add external-secrets Helm repo
+  kubernetes.core.helm_repository:
+    name: external-secrets
+    repo_url: https://charts.external-secrets.io
+    binary_path: "{{ helm_binary_path }}"
+
+- name: Install/upgrade External Secrets Operator
+  kubernetes.core.helm:
+    name: external-secrets
+    chart_ref: external-secrets/external-secrets
+    chart_version: "{{ external_secrets_chart_version }}"
+    release_namespace: "{{ external_secrets_namespace }}"
+    kubeconfig: "{{ kubeconfig_path }}"
+    binary_path: "{{ helm_binary_path }}"
+    values:
+      installCRDs: true
+      serviceAccount:
+        create: true
+        name: external-secrets
+    wait: true
+
+- name: Check External Secrets Pod Identity association
+  ansible.builtin.command:
+    argv:
+      - aws
+      - eks
+      - list-pod-identity-associations
+      - --cluster-name
+      - "{{ eks_cluster_name }}"
+      - --namespace
+      - "{{ external_secrets_namespace }}"
+      - --service-account
+      - external-secrets
+      - --region
+      - "{{ aws_region }}"
+      - --query
+      - "associations[0].associationId"
+      - --output
+      - text
+  register: external_secrets_pod_identity_association
+  changed_when: false
+
+- name: Create External Secrets Pod Identity association
+  ansible.builtin.command:
+    argv:
+      - aws
+      - eks
+      - create-pod-identity-association
+      - --cluster-name
+      - "{{ eks_cluster_name }}"
+      - --namespace
+      - "{{ external_secrets_namespace }}"
+      - --service-account
+      - external-secrets
+      - --role-arn
+      - "{{ external_secrets_role_arn }}"
+      - --region
+      - "{{ aws_region }}"
+  when: external_secrets_pod_identity_association.stdout | trim in ['', 'None']
+  register: external_secrets_pod_identity_create
+  changed_when: true
+
+- name: Apply AWS Secrets Manager ClusterSecretStore
+  kubernetes.core.k8s:
+    kubeconfig: "{{ kubeconfig_path }}"
+    state: present
+    definition: "{{ lookup('ansible.builtin.template', role_path + '/templates/clustersecretstore.yml.j2') | from_yaml }}"

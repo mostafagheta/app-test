@@ -1,0 +1,19 @@
+eks_cluster_name: "myapp-eks-cluster"
+aws_region: "eu-central-1"
+kubeconfig_path: "/home/eks-manager/.kube/config"
+helm_binary_path: "/usr/local/bin/helm"
+
+# Terraform outputs
+vpc_id: "vpc-0625838282d061486"
+eks_cluster_endpoint: "https://4BE54DBD19F1BD8B58E598C84C26B75A.gr7.eu-central-1.eks.amazonaws.com"
+lb_controller_role_arn: "arn:aws:iam::130299714330:role/myapp-eks-cluster-aws-lb-controller"
+external_secrets_role_arn: "arn:aws:iam::130299714330:role/myapp-eks-cluster-external-secrets"
+velero_irsa_role_arn: "arn:aws:iam::130299714330:role/myapp-eks-cluster-velero"
+ebs_csi_role_arn: "arn:aws:iam::130299714330:role/myapp-eks-cluster-ebs-csi"
+velero_s3_bucket: "myapp-eks-cluster-velero-130299714330"
+image_updater_role_arn: "arn:aws:iam::130299714330:role/argoImageUpdaterTrust"
+argocd_namespace: argocd
+image_updater_sa_name: argocd-image-updater
+aws_account_id: "130299714330" 
+ecr_registry_host: "{{ aws_account_id }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+
