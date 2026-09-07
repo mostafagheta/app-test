@@ -12,7 +12,7 @@
 replicaCount: 3
 
 image:
-  repository: 130299714330.dkr.ecr.eu-central-1.amazonaws.com/petclinic-prod
+  repository: 130299714330.dkr.ecr.eu-central-1.amazonaws.com/petclinic
   pullPolicy: IfNotPresent     # Avoid unnecessary pulls on stable prod tags
   tag: "latest"
 
